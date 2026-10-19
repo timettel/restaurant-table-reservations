@@ -91,6 +91,18 @@ CREATE TABLE IF NOT EXISTS manual_occupancies (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS public_booking_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_hash TEXT NOT NULL,
+    attempted_at INTEGER NOT NULL,
+    successful INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS used_captcha_challenges (
+    nonce TEXT PRIMARY KEY,
+    used_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS reservations_slot_idx
     ON reservations (reservation_date, table_id, status, start_time, end_time);
 CREATE INDEX IF NOT EXISTS reservations_upcoming_idx
@@ -101,6 +113,12 @@ CREATE INDEX IF NOT EXISTS opening_blocks_weekday_idx
     ON opening_blocks (weekday, sort_order, start_time);
 CREATE INDEX IF NOT EXISTS manual_occupancies_active_idx
     ON manual_occupancies (status, table_id, expires_at);
+CREATE INDEX IF NOT EXISTS public_booking_attempts_client_idx
+    ON public_booking_attempts (client_hash, attempted_at, successful);
+CREATE INDEX IF NOT EXISTS public_booking_attempts_time_idx
+    ON public_booking_attempts (attempted_at);
+CREATE INDEX IF NOT EXISTS used_captcha_challenges_time_idx
+    ON used_captcha_challenges (used_at);
 SQL);
 
         self::ensureColumn($pdo, 'reservations', 'cancellation_deadline', "TEXT NOT NULL DEFAULT ''");

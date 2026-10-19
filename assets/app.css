@@ -618,15 +618,6 @@ textarea:focus-visible {
     font-size: 0.8rem;
 }
 
-.contact-invalid input[name="phone"],
-.contact-invalid input[name="email"] {
-    border-color: #d9473f;
-}
-
-.contact-invalid .contact-help {
-    color: #c42e26;
-}
-
 .guest-field {
     justify-items: start;
 }
@@ -725,6 +716,37 @@ textarea:focus-visible {
     font-size: 0.75rem;
     text-align: center;
 }
+
+.captcha-box {
+    display: grid;
+    gap: 9px;
+    margin-top: 18px;
+    padding: 15px 17px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+}
+
+.captcha-box__heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+
+.captcha-box__heading button {
+    padding: 2px 0;
+    border: 0;
+    background: none;
+    color: var(--blue-dark);
+    cursor: pointer;
+    font-size: .85rem;
+    text-decoration: underline;
+}
+
+.captcha-box .field { margin: 0; }
+.captcha-box .field input { max-width: 120px; }
+.captcha-box small { color: var(--muted); font-size: .76rem; }
 
 .honeypot {
     position: absolute !important;

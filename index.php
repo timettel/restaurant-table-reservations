@@ -14,8 +14,8 @@ header('X-Content-Type-Options: nosniff');
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tisch reservieren</title>
-    <link rel="stylesheet" href="assets/app.css?v=1">
-    <script src="assets/app.js?v=1" defer></script>
+    <link rel="stylesheet" href="assets/app.css?v=2">
+    <script src="assets/app.js?v=2" defer></script>
 </head>
 <body>
 <main class="booking-shell" id="booking-app" aria-busy="true">
@@ -93,7 +93,7 @@ header('X-Content-Type-Options: nosniff');
                 <input type="email" name="email" autocomplete="email" maxlength="160" placeholder="z. B. name@example.de">
             </label>
         </div>
-        <p class="contact-help" id="contact-help">Bitte mindestens Telefonnummer oder E-Mail-Adresse angeben.</p>
+        <p class="contact-help" id="contact-help">Telefon und E-Mail sind freiwillig. Eine Angabe hilft dem Restaurant bei Rückfragen; per E-Mail gibt es eine Bestätigung und einen Stornolink.</p>
 
         <div class="field guest-field">
             <span>Anzahl der Gäste</span>
@@ -105,6 +105,18 @@ header('X-Content-Type-Options: nosniff');
             <small id="capacity-note"></small>
         </div>
 
+        <div class="captcha-box">
+            <div class="captcha-box__heading">
+                <strong>Sicherheitsfrage *</strong>
+                <button type="button" id="captcha-refresh">Neue Frage</button>
+            </div>
+            <label class="field" for="captcha-answer">
+                <span id="captcha-question">Frage wird geladen …</span>
+                <input type="text" id="captcha-answer" name="captcha_answer" inputmode="numeric" pattern="[0-9]+" maxlength="2" autocomplete="off" required>
+            </label>
+            <small>Zum Schutz vor automatisierten Reservierungen. Keine Verbindung zu einem externen Dienst.</small>
+        </div>
+
         <label class="honeypot" aria-hidden="true">
             Webseite
             <input type="text" name="website" tabindex="-1" autocomplete="off">
@@ -114,7 +126,7 @@ header('X-Content-Type-Options: nosniff');
             <button class="button button--secondary" type="button" id="dialog-cancel">Abbrechen</button>
             <button class="button button--primary" type="submit" id="submit-reservation">Verbindlich reservieren</button>
         </div>
-        <p class="privacy-note">Ihre Kontaktdaten werden ausschließlich für diese Reservierung verwendet.</p>
+        <p class="privacy-note">Freiwillig angegebene Kontaktdaten werden ausschließlich für diese Reservierung verwendet.</p>
     </form>
 
     <section class="success-state" id="success-state" hidden>

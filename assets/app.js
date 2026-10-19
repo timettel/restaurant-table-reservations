@@ -8,6 +8,9 @@ const state = {
     selectedTable: null,
     occupied: new Set(),
     guestCount: 2,
+    captcha: null,
+    captchaRequest: 0,
+    submitting: false,
 };
 
 const elements = {};
@@ -30,6 +33,8 @@ document.addEventListener('DOMContentLoaded', () => {
         capacityNote: document.querySelector('#capacity-note'),
         submit: document.querySelector('#submit-reservation'),
         successMessage: document.querySelector('#success-message'),
+        captchaQuestion: document.querySelector('#captcha-question'),
+        captchaAnswer: document.querySelector('#captcha-answer'),
     });
 
     document.querySelector('#dialog-close').addEventListener('click', closeDialog);
@@ -37,10 +42,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('#success-close').addEventListener('click', closeSuccess);
     document.querySelector('#guest-minus').addEventListener('click', () => changeGuestCount(-1));
     document.querySelector('#guest-plus').addEventListener('click', () => changeGuestCount(1));
+    document.querySelector('#captcha-refresh').addEventListener('click', loadCaptcha);
     elements.form.addEventListener('submit', submitReservation);
     elements.form.addEventListener('input', () => {
         elements.dialogError.hidden = true;
-        elements.form.classList.remove('contact-invalid');
     });
     elements.dialog.addEventListener('cancel', (event) => {
         event.preventDefault();
@@ -223,11 +228,12 @@ function openReservation(table) {
     elements.capacityNote.textContent = `An diesem Tisch sind bis zu ${table.capacity} Gäste möglich.`;
     updateGuestCount();
     elements.dialog.showModal();
+    loadCaptcha();
     window.setTimeout(() => elements.form.elements.name.focus(), 50);
 }
 
 function closeDialog() {
-    if (elements.submit.disabled) return;
+    if (state.submitting) return;
     elements.dialog.close();
 }
 
@@ -253,13 +259,10 @@ async function submitReservation(event) {
     const formData = new FormData(elements.form);
     const phone = String(formData.get('phone') || '').trim();
     const email = String(formData.get('email') || '').trim();
-    if (!phone && !email) {
-        elements.form.classList.add('contact-invalid');
-        showDialogError('Bitte geben Sie eine Telefonnummer oder E-Mail-Adresse an.');
-        return;
-    }
     if (!elements.form.reportValidity()) return;
+    if (!state.captcha) { showDialogError('Bitte laden Sie eine neue Sicherheitsfrage.'); return; }
 
+    state.submitting = true;
     elements.submit.disabled = true;
     elements.submit.textContent = 'Wird reserviert …';
     try {
@@ -268,6 +271,8 @@ async function submitReservation(event) {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 booking_token: state.config.booking_token,
+                captcha_token: state.captcha.token,
+                captcha_answer: String(formData.get('captcha_answer') || '').trim(),
                 date: state.selectedDate,
                 time: state.selectedTime,
                 table_id: state.selectedTable.id,
@@ -284,10 +289,34 @@ async function submitReservation(event) {
         document.querySelector('#success-close').focus();
     } catch (error) {
         showDialogError(error.message);
-        if (error.status === 409) await selectTime(state.selectedTime);
+        await loadCaptcha();
+        if (error.status === 409) {
+            elements.dialog.close();
+            await selectTime(state.selectedTime);
+        }
     } finally {
-        elements.submit.disabled = false;
+        state.submitting = false;
+        elements.submit.disabled = state.captcha === null;
         elements.submit.textContent = 'Verbindlich reservieren';
+    }
+}
+
+async function loadCaptcha() {
+    const request = ++state.captchaRequest;
+    state.captcha = null;
+    elements.captchaQuestion.textContent = 'Frage wird geladen …';
+    elements.captchaAnswer.value = '';
+    elements.submit.disabled = true;
+    try {
+        const response = await api('api.php?action=captcha');
+        if (request !== state.captchaRequest) return;
+        state.captcha = response.data;
+        elements.captchaQuestion.textContent = response.data.question;
+        if (!state.submitting) elements.submit.disabled = false;
+    } catch (error) {
+        if (request !== state.captchaRequest) return;
+        elements.captchaQuestion.textContent = 'Frage konnte nicht geladen werden.';
+        showDialogError(error.message);
     }
 }
 

@@ -15,6 +15,10 @@ try {
         jsonResponse(['ok' => true, 'data' => $service->publicBootstrap()]);
     }
 
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'captcha') {
+        jsonResponse(['ok' => true, 'data' => $service->publicCaptcha()]);
+    }
+
     if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'slots') {
         $date = (string) ($_GET['date'] ?? '');
         jsonResponse(['ok' => true, 'data' => ['date' => $date, 'slots' => $service->slotsForDate($date)]]);
@@ -74,6 +78,8 @@ try {
     }
 
     jsonResponse(['ok' => false, 'error' => 'Nicht unterstützte Anfrage.'], 404);
+} catch (PublicRateLimitException $exception) {
+    jsonResponse(['ok' => false, 'error' => $exception->getMessage()], 429);
 } catch (DomainException $exception) {
     jsonResponse(['ok' => false, 'error' => $exception->getMessage()], 409);
 } catch (InvalidArgumentException | JsonException $exception) {

@@ -33,7 +33,7 @@ db();
     <title>Live-Plan – Reservierungsverwaltung</title>
     <link rel="stylesheet" href="assets/admin.css?v=3">
     <link rel="stylesheet" href="assets/live.css?v=1">
-    <script src="assets/live.js?v=2" defer></script>
+    <script src="assets/live.js?v=3" defer></script>
 </head>
 <body>
 <header class="admin-header">
@@ -130,7 +130,7 @@ db();
             <label class="field"><span>Telefon</span><input type="tel" name="phone" maxlength="40" autocomplete="tel"></label>
             <label class="field"><span>E-Mail</span><input type="email" name="email" maxlength="160" autocomplete="email"></label>
         </div>
-        <p class="contact-hint">Mindestens Telefon oder E-Mail angeben.</p>
+        <p class="contact-hint">Telefon und E-Mail sind freiwillig. Eine E-Mail ist nur nötig, wenn eine Bestätigung versendet werden soll.</p>
         <label class="confirm-choice"><input type="checkbox" name="send_confirmation"> Bestätigung per E-Mail senden</label>
         <div class="dialog-actions"><button type="button" class="button button--secondary" data-close-dialog>Abbrechen</button><button type="submit" class="button button--primary">Reservierung eintragen</button></div>
     </form>

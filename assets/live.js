@@ -292,7 +292,6 @@ async function submitPhone(event) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    if (!String(data.get('phone') || '').trim() && !String(data.get('email') || '').trim()) { showFormError('phone','Bitte Telefon oder E-Mail angeben.'); return; }
     if (form.elements.send_confirmation.checked && !String(data.get('email') || '').trim()) { showFormError('phone','Für die Bestätigung bitte eine E-Mail-Adresse angeben.'); return; }
     if (!live.phoneAvailability || form.elements.table_id.disabled || !form.elements.table_id.value) { showFormError('phone','Für diese Personenzahl ist kein passender Tisch ausgewählt.'); return; }
     if (!form.reportValidity()) return;

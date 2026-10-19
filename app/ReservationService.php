@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+final class PublicRateLimitException extends DomainException {}
+
 final class ReservationService
 {
     private PDO $pdo;
@@ -108,7 +110,8 @@ SQL);
 
     public function createReservation(array $input, string $clientIp): array
     {
-        return $this->createReservationRecord($input, $clientIp, 'online', true);
+        $attemptId = $this->registerPublicAttempt($clientIp);
+        return $this->createReservationRecord($input, $clientIp, 'online', true, $attemptId);
     }
 
     public function createAdminReservation(array $input): array
@@ -116,10 +119,25 @@ SQL);
         return $this->createReservationRecord($input, 'admin', 'phone', false);
     }
 
-    private function createReservationRecord(array $input, string $clientIp, string $source, bool $verifyPublicRequest): array
+    public function publicCaptcha(): array
     {
+        $first = random_int(2, 9);
+        $second = random_int(1, 9);
+        $nonce = bin2hex(random_bytes(12));
+        $expires = time() + 900;
+        $signature = hash_hmac('sha256', "captcha|$nonce|$expires|" . ($first + $second), $this->config['app']['secret']);
+        return [
+            'question' => "Wie viel ist $first + $second?",
+            'token' => "$nonce.$expires.$signature",
+        ];
+    }
+
+    private function createReservationRecord(array $input, string $clientIp, string $source, bool $verifyPublicRequest, ?int $attemptId = null): array
+    {
+        $captchaNonce = null;
         if ($verifyPublicRequest) {
             $this->verifyBookingToken((string) ($input['booking_token'] ?? ''));
+            $captchaNonce = $this->verifyCaptcha((string) ($input['captcha_token'] ?? ''), (string) ($input['captcha_answer'] ?? ''));
             if (trim((string) ($input['website'] ?? '')) !== '') {
                 throw new InvalidArgumentException('Die Reservierung konnte nicht verarbeitet werden.');
             }
@@ -135,9 +153,6 @@ SQL);
 
         if (mb_strlen($name) < 2 || mb_strlen($name) > 120) {
             throw new InvalidArgumentException('Bitte geben Sie einen gültigen Namen ein.');
-        }
-        if ($phone === '' && $email === '') {
-            throw new InvalidArgumentException('Bitte geben Sie eine Telefonnummer oder E-Mail-Adresse an.');
         }
         if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw new InvalidArgumentException('Bitte prüfen Sie die E-Mail-Adresse.');
@@ -171,6 +186,13 @@ SQL);
 
         $this->pdo->exec('BEGIN IMMEDIATE');
         try {
+            if ($captchaNonce !== null) {
+                $useChallenge = $this->pdo->prepare('INSERT OR IGNORE INTO used_captcha_challenges (nonce, used_at) VALUES (:nonce, :used_at)');
+                $useChallenge->execute(['nonce' => $captchaNonce, 'used_at' => time()]);
+                if ($useChallenge->rowCount() !== 1) {
+                    throw new InvalidArgumentException('Die Sicherheitsfrage wurde bereits verwendet. Bitte eine neue Frage laden.');
+                }
+            }
             $overlap = $this->pdo->prepare(<<<'SQL'
 SELECT COUNT(*)
 FROM reservations
@@ -230,6 +252,10 @@ SQL);
                 'source' => $source,
             ]);
             $reservationId = (int) $this->pdo->lastInsertId();
+            if ($attemptId !== null) {
+                $markAttempt = $this->pdo->prepare('UPDATE public_booking_attempts SET successful = 1 WHERE id = :id');
+                $markAttempt->execute(['id' => $attemptId]);
+            }
             $this->pdo->exec('COMMIT');
         } catch (Throwable $exception) {
             if ($this->pdo->inTransaction()) {
@@ -440,6 +466,56 @@ SQL);
             }
         }
         return null;
+    }
+
+    private function registerPublicAttempt(string $clientIp): int
+    {
+        $clientHash = hash_hmac('sha256', $clientIp, $this->config['app']['secret']);
+        $now = time();
+        $maxAttempts = max(1, (int) ($this->config['app']['max_public_attempts_per_15_minutes'] ?? 20));
+        $maxBookings = max(1, (int) ($this->config['app']['max_public_bookings_per_hour'] ?? 8));
+        $this->pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $this->pdo->prepare('DELETE FROM public_booking_attempts WHERE attempted_at < :cutoff')
+                ->execute(['cutoff' => $now - 3600]);
+            $this->pdo->prepare('DELETE FROM used_captcha_challenges WHERE used_at < :cutoff')
+                ->execute(['cutoff' => $now - 3600]);
+            $count = $this->pdo->prepare('SELECT COUNT(*) FROM public_booking_attempts WHERE client_hash = :client_hash AND attempted_at >= :cutoff');
+            $count->execute(['client_hash' => $clientHash, 'cutoff' => $now - 900]);
+            if ((int) $count->fetchColumn() >= $maxAttempts) {
+                throw new PublicRateLimitException('Zu viele Buchungsversuche. Bitte versuchen Sie es in 15 Minuten erneut.');
+            }
+            $count = $this->pdo->prepare('SELECT COUNT(*) FROM public_booking_attempts WHERE client_hash = :client_hash AND attempted_at >= :cutoff AND successful = 1');
+            $count->execute(['client_hash' => $clientHash, 'cutoff' => $now - 3600]);
+            if ((int) $count->fetchColumn() >= $maxBookings) {
+                throw new PublicRateLimitException('Von dieser Verbindung wurden bereits mehrere Reservierungen vorgenommen. Bitte wenden Sie sich direkt an das Restaurant.');
+            }
+            $insert = $this->pdo->prepare('INSERT INTO public_booking_attempts (client_hash, attempted_at) VALUES (:client_hash, :attempted_at)');
+            $insert->execute(['client_hash' => $clientHash, 'attempted_at' => $now]);
+            $id = (int) $this->pdo->lastInsertId();
+            $this->pdo->exec('COMMIT');
+            return $id;
+        } catch (Throwable $exception) {
+            if ($this->pdo->inTransaction()) $this->pdo->exec('ROLLBACK');
+            throw $exception;
+        }
+    }
+
+    private function verifyCaptcha(string $token, string $answer): string
+    {
+        if (!preg_match('/^([a-f0-9]{24})\.([0-9]{10,12})\.([a-f0-9]{64})$/D', $token, $parts)
+            || !ctype_digit($answer) || strlen($answer) > 2 || (int) $answer > 18) {
+            throw new InvalidArgumentException('Bitte lösen Sie die Sicherheitsfrage.');
+        }
+        $expires = (int) $parts[2];
+        if ($expires < time() || $expires > time() + 900) {
+            throw new InvalidArgumentException('Die Sicherheitsfrage ist abgelaufen. Bitte eine neue Frage laden.');
+        }
+        $expected = hash_hmac('sha256', "captcha|$parts[1]|$expires|" . (int) $answer, $this->config['app']['secret']);
+        if (!hash_equals($expected, $parts[3])) {
+            throw new InvalidArgumentException('Die Antwort auf die Sicherheitsfrage ist leider nicht richtig.');
+        }
+        return $parts[1];
     }
 
     private function createBookingToken(): string

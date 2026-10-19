@@ -33,7 +33,7 @@ db();
     <title>Live-Plan – Reservierungsverwaltung</title>
     <link rel="stylesheet" href="assets/admin.css?v=3">
     <link rel="stylesheet" href="assets/live.css?v=1">
-    <script src="assets/live.js?v=1" defer></script>
+    <script src="assets/live.js?v=2" defer></script>
 </head>
 <body>
 <header class="admin-header">
@@ -118,14 +118,12 @@ db();
     <form id="phone-form" novalidate>
         <div class="dialog-head"><h2 id="phone-title">Telefonische Reservierung</h2><button type="button" class="close-dialog" data-close-dialog aria-label="Schließen">×</button></div>
         <div class="notice notice--error dialog-error" id="phone-error" role="alert" hidden></div>
+        <label class="field"><span>Wie viele Personen? *</span><input type="number" name="party_size" id="phone-party" min="1" placeholder="z. B. 6" required></label>
         <div class="live-form-grid">
             <label class="field"><span>Datum *</span><select name="date" required id="phone-date"></select></label>
             <label class="field"><span>Uhrzeit *</span><select name="time" required id="phone-time"></select></label>
         </div>
-        <div class="live-form-grid">
-            <label class="field"><span>Tisch *</span><select name="table_id" required id="phone-table"></select></label>
-            <label class="field"><span>Personen *</span><input type="number" name="party_size" id="phone-party" min="1" required></label>
-        </div>
+        <label class="field"><span>Passender Tisch *</span><select name="table_id" required id="phone-table" disabled></select></label>
         <p class="dialog-info" id="phone-availability"></p>
         <label class="field"><span>Name *</span><input type="text" name="name" maxlength="120" autocomplete="name" required></label>
         <div class="live-form-grid">

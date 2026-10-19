@@ -1,6 +1,6 @@
 'use strict';
 
-const live = { snapshot:null, selectedId:null, refreshAt:0, refreshing:false, toastTimer:null, phoneRequest:0 };
+const live = { snapshot:null, selectedId:null, refreshAt:0, refreshing:false, toastTimer:null, phoneRequest:0, phoneAvailability:null };
 const $ = (selector) => document.querySelector(selector);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -10,7 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#phone-form').addEventListener('submit', submitPhone);
     $('#phone-date').addEventListener('change', loadPhoneSlots);
     $('#phone-time').addEventListener('change', loadPhoneAvailability);
-    $('#phone-table').addEventListener('change', updatePhoneCapacity);
+    $('#phone-party').addEventListener('input', updatePhoneParty);
+    $('#phone-table').addEventListener('change', updatePhoneSelectionMessage);
     document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));
     document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => {
         if (event.target === dialog) dialog.close();
@@ -186,6 +187,11 @@ async function releaseTable(table) {
 
 async function openPhone() {
     const form = $('#phone-form'); form.reset(); $('#phone-error').hidden = true;
+    ++live.phoneRequest;
+    live.phoneAvailability = null;
+    $('#phone-table').replaceChildren();
+    $('#phone-table').disabled = true;
+    form.querySelector('[type="submit"]').disabled = true;
     const date = $('#phone-date'); date.replaceChildren();
     live.snapshot.dates.filter((day) => !day.closed).forEach((day) => date.add(new Option(day.long_label,day.date)));
     if (live.snapshot.dates.some((day) => day.date === live.snapshot.today && !day.closed)) date.value = live.snapshot.today;
@@ -195,53 +201,91 @@ async function openPhone() {
 
 async function loadPhoneSlots() {
     const date = $('#phone-date').value;
+    const request = ++live.phoneRequest;
     const time = $('#phone-time'); time.replaceChildren();
-    const table = $('#phone-table'); table.replaceChildren();
+    live.phoneAvailability = null;
+    $('#phone-table').replaceChildren();
+    $('#phone-table').disabled = true;
+    $('#phone-form [type="submit"]').disabled = true;
     $('#phone-availability').textContent = 'Verfügbarkeit wird geladen …';
     if (!date) { $('#phone-availability').textContent = 'Kein buchbares Datum verfügbar.'; return; }
-    const request = ++live.phoneRequest;
     try {
         const data = await api(`slots&date=${encodeURIComponent(date)}`);
         if (request !== live.phoneRequest) return;
         data.slots.forEach((slot) => time.add(new Option(slot,slot)));
         if (data.slots.length === 0) { $('#phone-availability').textContent = 'Für diesen Tag sind keine Startzeiten mehr verfügbar.'; return; }
-        await loadPhoneAvailability();
+        if (phonePartySize() !== null) await loadPhoneAvailability();
+        else $('#phone-availability').textContent = 'Bitte zuerst die Personenzahl eingeben.';
     } catch (error) { showFormError('phone',error.message); }
 }
 
 async function loadPhoneAvailability() {
     const date = $('#phone-date').value, time = $('#phone-time').value;
-    const tableSelect = $('#phone-table'); tableSelect.replaceChildren();
-    if (!date || !time) return;
     const request = ++live.phoneRequest;
+    live.phoneAvailability = null;
+    $('#phone-table').replaceChildren();
+    $('#phone-table').disabled = true;
+    $('#phone-form [type="submit"]').disabled = true;
+    if (!date || !time) { $('#phone-availability').textContent = 'Bitte Datum und Uhrzeit wählen.'; return; }
+    if (phonePartySize() === null) { $('#phone-availability').textContent = 'Bitte zuerst die Personenzahl eingeben.'; return; }
+    $('#phone-availability').textContent = 'Passende Tische werden gesucht …';
     try {
         const data = await api(`availability&date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}`);
         if (request !== live.phoneRequest) return;
-        const occupied = new Set(data.occupied_table_ids.map(Number));
-        live.snapshot.tables.forEach((table) => {
-            const option = new Option(`Tisch ${table.label} (${table.capacity} Plätze)${occupied.has(Number(table.id)) ? ' – belegt' : ''}`,String(table.id));
-            option.disabled = occupied.has(Number(table.id));
-            tableSelect.add(option);
-        });
-        if (live.selectedId && !occupied.has(live.selectedId)) tableSelect.value = String(live.selectedId);
-        if (tableSelect.selectedOptions[0]?.disabled) {
-            const first = Array.from(tableSelect.options).find((option) => !option.disabled);
-            if (first) tableSelect.value = first.value;
-        }
-        $('#phone-availability').textContent = tableSelect.selectedOptions[0] && !tableSelect.selectedOptions[0].disabled
-            ? `Tisch ${tableSelect.value} ist von ${time} bis ${data.end_time} Uhr frei.`
-            : 'Zu dieser Uhrzeit ist kein Tisch frei.';
-        updatePhoneCapacity();
+        live.phoneAvailability = data;
+        renderPhoneTables();
     } catch (error) { showFormError('phone',error.message); }
 }
 
-function updatePhoneCapacity() {
+function phonePartySize() {
+    const value = Number($('#phone-party').value);
+    return Number.isInteger(value) && value > 0 && $('#phone-party').value !== '' ? value : null;
+}
+
+function updatePhoneParty() {
+    $('#phone-error').hidden = true;
+    if (phonePartySize() === null) {
+        if ($('#phone-time').value) ++live.phoneRequest;
+        live.phoneAvailability = null;
+        $('#phone-table').replaceChildren();
+        $('#phone-table').disabled = true;
+        $('#phone-form [type="submit"]').disabled = true;
+        $('#phone-availability').textContent = 'Bitte zuerst die Personenzahl eingeben.';
+    } else if (live.phoneAvailability) {
+        renderPhoneTables();
+    } else if ($('#phone-time').value) {
+        loadPhoneAvailability();
+    }
+}
+
+function renderPhoneTables() {
+    const partySize = phonePartySize();
+    const tableSelect = $('#phone-table');
+    const previousId = Number(tableSelect.value);
+    tableSelect.replaceChildren();
+    if (partySize === null || !live.phoneAvailability) return;
+    const occupied = new Set(live.phoneAvailability.occupied_table_ids.map(Number));
+    const matching = live.snapshot.tables
+        .filter((table) => Number(table.capacity) >= partySize && !occupied.has(Number(table.id)))
+        .sort((a, b) => Number(a.capacity) - Number(b.capacity) || Number(a.id) - Number(b.id));
+    matching.forEach((table) => tableSelect.add(new Option(`Tisch ${table.label} (${table.capacity} Plätze)`, String(table.id))));
+    const preferred = matching.find((table) => Number(table.id) === previousId)
+        || matching.find((table) => Number(table.id) === live.selectedId);
+    if (preferred) tableSelect.value = String(preferred.id);
+    tableSelect.disabled = matching.length === 0;
+    $('#phone-form [type="submit"]').disabled = matching.length === 0;
+    if (matching.length === 0) {
+        $('#phone-availability').textContent = `Für ${partySize} Personen ist um ${$('#phone-time').value} Uhr kein passender Tisch frei.`;
+    } else {
+        updatePhoneSelectionMessage();
+    }
+}
+
+function updatePhoneSelectionMessage() {
     const table = live.snapshot?.tables.find((item) => Number(item.id) === Number($('#phone-table').value));
-    if (!table) return;
-    const input = $('#phone-party'); input.max = table.capacity;
-    if (!input.value || Number(input.value) > Number(table.capacity)) input.value = String(Math.min(2,Number(table.capacity)));
-    const time = $('#phone-time').value;
-    if (time) $('#phone-availability').textContent = `Tisch ${table.label} ist ab ${time} Uhr frei. Dauer: ${live.snapshot.duration_minutes} Minuten.`;
+    if (!table || !live.phoneAvailability) return;
+    const count = $('#phone-table').options.length;
+    $('#phone-availability').textContent = `${count} passende${count === 1 ? 'r Tisch' : ' Tische'} frei für ${phonePartySize()} Personen. Tisch ${table.label} ist von ${$('#phone-time').value} bis ${live.phoneAvailability.end_time} Uhr verfügbar.`;
 }
 
 async function submitPhone(event) {
@@ -250,6 +294,7 @@ async function submitPhone(event) {
     const data = new FormData(form);
     if (!String(data.get('phone') || '').trim() && !String(data.get('email') || '').trim()) { showFormError('phone','Bitte Telefon oder E-Mail angeben.'); return; }
     if (form.elements.send_confirmation.checked && !String(data.get('email') || '').trim()) { showFormError('phone','Für die Bestätigung bitte eine E-Mail-Adresse angeben.'); return; }
+    if (!live.phoneAvailability || form.elements.table_id.disabled || !form.elements.table_id.value) { showFormError('phone','Für diese Personenzahl ist kein passender Tisch ausgewählt.'); return; }
     if (!form.reportValidity()) return;
     const button = form.querySelector('[type="submit"]'); button.disabled = true;
     try {

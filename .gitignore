@@ -1,0 +1,10 @@
+/app/config.php
+/app/.config-reset-*
+/var/reservations.sqlite
+/var/reservations.sqlite-*
+/var/reservations.sqlite-journal
+/var/app.log
+/var/*.log
+/.idea/
+/.vscode/
+.DS_Store

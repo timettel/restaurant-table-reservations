@@ -1,0 +1,17 @@
+Options -Indexes
+DirectoryIndex index.php
+
+RewriteEngine On
+RewriteRule ^(?:app|var)(?:/|$) - [F,L,NC]
+RewriteRule ^README\.md$ - [F,L,NC]
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    <FilesMatch "^(index|cancel)\.php$">
+        Header always unset X-Frame-Options
+    </FilesMatch>
+</IfModule>
+
+<FilesMatch "^(README\.md)$">
+    Require all denied
+</FilesMatch>
